@@ -17,14 +17,12 @@ def main() -> None:
     spreadsheet_id = os.environ["SPREADSHEET_ID"]
     sheet_name = os.getenv("SHEET_NAME", "Sheet1")
     pr_number = os.environ["PR_NUMBER"]
-    student_name = os.environ["STUDENT_NAME"]
     github_username = os.environ["GITHUB_USERNAME"]
-    itsc_email = os.environ["ITSC_EMAIL"]
-    student_id = os.environ["STUDENT_ID"]
+    hash_value = os.environ["HASH_VALUE"]
 
     result = sheets.values().get(
         spreadsheetId=spreadsheet_id,
-        range=f"{sheet_name}!A:E",
+        range=f"{sheet_name}!A:C",
     ).execute()
     rows = result.get("values", [])
 
@@ -34,12 +32,12 @@ def main() -> None:
             match_row = index
             break
 
-    new_values = [[pr_number, itsc_email, student_id, student_name, github_username]]
+    new_values = [[pr_number, github_username, hash_value]]
 
     if match_row:
         sheets.values().update(
             spreadsheetId=spreadsheet_id,
-            range=f"{sheet_name}!A{match_row}:E{match_row}",
+            range=f"{sheet_name}!A{match_row}:C{match_row}",
             valueInputOption="RAW",
             body={"values": new_values},
         ).execute()
@@ -49,7 +47,7 @@ def main() -> None:
     next_row = len(rows) + 1
     sheets.values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"{sheet_name}!A{next_row}:E{next_row}",
+        range=f"{sheet_name}!A{next_row}:C{next_row}",
         valueInputOption="RAW",
         body={"values": new_values},
     ).execute()

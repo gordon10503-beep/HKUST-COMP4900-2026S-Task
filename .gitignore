@@ -1,2 +1,4 @@
 # This file is to let git say don't track which file
 .DS_Store
+.venv
+__pycache__

@@ -44,60 +44,71 @@ jobs:
               echo "Please add the file with the structure below and push again:"
               echo '```json'
               echo '{'
-              echo '  "name": "Your Name",'
-              echo '  "itsc-email": "yourname@connect.ust.hk",'
-              echo '  "student-id": "20000000",'
-              echo '  "github-username": "your-github-username"'
+              echo '  "github-username": "your-github-username",'
+              echo '  "hash-value": "<hex-digest>"'
               echo '}'
               echo '```'
             } > /tmp/pr_comment.md
             exit 0
           fi
 
-          ITSC_EMAIL=$(jq -r '.["itsc-email"] // empty' "$JSON_FILE")
-          STUDENT_ID=$(jq -r '.["student-id"] // empty' "$JSON_FILE")
-          STUDENT_NAME=$(jq -r '.name // empty' "$JSON_FILE")
-          GITHUB_USERNAME=$(jq -r '.["github-username"] // empty' "$JSON_FILE")
+          GITHUB_USERNAME=$(jq -r '."github-username" // empty' "$JSON_FILE")
+          HASH_VALUE=$(jq -r '."hash-value" // empty' "$JSON_FILE")
 
-          echo "itsc_email=$ITSC_EMAIL" >> "$GITHUB_OUTPUT"
-          echo "student_id=$STUDENT_ID" >> "$GITHUB_OUTPUT"
-          echo "student_name=$STUDENT_NAME" >> "$GITHUB_OUTPUT"
           echo "github_username=$GITHUB_USERNAME" >> "$GITHUB_OUTPUT"
+          echo "hash_value=$HASH_VALUE" >> "$GITHUB_OUTPUT"
 
-          # Validate itsc-email ends with @connect.ust.hk
-          if [[ "$ITSC_EMAIL" != *"@connect.ust.hk" ]]; then
-            echo "::error::itsc-email '$ITSC_EMAIL' does not end with @connect.ust.hk"
+          # Validate required fields are present.
+          if [[ -z "$GITHUB_USERNAME" || -z "$HASH_VALUE" ]]; then
             echo "valid=false" >> "$GITHUB_OUTPUT"
             {
               echo "## ❌ Student Submission Validation Failed"
               echo ""
-              echo "**Invalid \`itsc-email\`:** \`${ITSC_EMAIL}\`"
+              echo "Missing one or more required fields in \`Data/student.json\`."
               echo ""
-              echo "The \`itsc-email\` field must end with \`@connect.ust.hk\`."
+              echo "Required fields: \`github-username\`, \`hash-value\`."
               echo ""
               echo "Please fix the value and push again."
             } > /tmp/pr_comment.md
             exit 0
           fi
 
-          # Validate student-id is exactly 8 digits
-          if ! [[ "$STUDENT_ID" =~ ^[0-9]{8}$ ]]; then
-            echo "::error::student-id '$STUDENT_ID' is not an 8-digit number"
+          # Validate hash value format and expected digest length.
+          if ! [[ "$HASH_VALUE" =~ ^[0-9a-fA-F]+$ ]]; then
+            echo "::error::hash-value '$HASH_VALUE' is not a hex digest"
             echo "valid=false" >> "$GITHUB_OUTPUT"
             {
               echo "## ❌ Student Submission Validation Failed"
               echo ""
-              echo "**Invalid \`student-id\`:** \`${STUDENT_ID}\`"
+              echo "**Invalid \`hash-value\`:** \`${HASH_VALUE}\`"
               echo ""
-              echo "The \`student-id\` field must be exactly 8 digits (e.g. \`20000000\`)."
+              echo "The \`hash-value\` field must be a hexadecimal digest."
               echo ""
               echo "Please fix the value and push again."
+            } > /tmp/pr_comment.md
+            exit 0
+          fi
+
+          DIGEST_LENGTH=${#HASH_VALUE}
+          EXPECTED_LENGTH=64
+
+          if [[ "$DIGEST_LENGTH" -ne "$EXPECTED_LENGTH" ]]; then
+            echo "::error::hash-value length ($DIGEST_LENGTH) does not match sha256 ($EXPECTED_LENGTH)"
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## ❌ Student Submission Validation Failed"
+              echo ""
+              echo "**Invalid \`hash-value\` length:** \`${DIGEST_LENGTH}\`"
+              echo ""
+              echo "For \`sha256\`, the digest must be \`$EXPECTED_LENGTH\` hex characters."
+              echo ""
+              echo "Please rerun \`python3.13 Data/generate_hash.py\` and update \`Data/student.json\`."
             } > /tmp/pr_comment.md
             exit 0
           fi
 
           echo "valid=true" >> "$GITHUB_OUTPUT"
-          echo "Validation passed: email=$ITSC_EMAIL, id=$STUDENT_ID"
+          echo "Validation passed: sha256 hash format"
 
       # ── Step 2: Post a comment when validation fails ──────────────────────────
       - name: Comment on PR (validation failed)
@@ -143,10 +154,8 @@ jobs:
         if: steps.validate.outputs.valid == 'true'
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-          STUDENT_NAME: ${{ steps.validate.outputs.student_name }}
           GITHUB_USERNAME: ${{ steps.validate.outputs.github_username }}
-          ITSC_EMAIL: ${{ steps.validate.outputs.itsc_email }}
-          STUDENT_ID: ${{ steps.validate.outputs.student_id }}
+          HASH_VALUE: ${{ steps.validate.outputs.hash_value }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: python .github/scripts/sync_google_sheet.py
